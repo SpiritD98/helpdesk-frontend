@@ -1,0 +1,229 @@
+import { Component, ChangeDetectionStrategy, inject, signal, OnInit, ViewChild, AfterViewInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { MatTableDataSource, MatTableModule } from '@angular/material/table';
+import { MatPaginator, MatPaginatorModule, PageEvent } from '@angular/material/paginator';
+import { MatCardModule } from '@angular/material/card';
+import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatDialog, MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
+import { MatOptionModule } from '@angular/material/core';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
+import { ProblemaApiService } from '../../../core/services/problema-api.service';
+import { CategoriaApiService } from '../../../core/services/categoria-api.service';
+import { Problema, ProblemaRequest } from '../../../core/models/problema.model';
+import { Categoria } from '../../../core/models/categoria.model';
+import { AuthService } from '../../../core/auth/auth.service';
+
+@Component({
+  selector: 'app-problema-list',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    CommonModule, MatTableModule, MatPaginatorModule, MatCardModule, MatIconModule,
+    MatButtonModule, MatProgressSpinnerModule, MatDialogModule, MatFormFieldModule,
+    MatInputModule, MatSelectModule, MatOptionModule, ReactiveFormsModule,
+  ],
+  template: `
+    <div class="flex justify-between items-center mb-4">
+      <h1 class="text-2xl font-bold">Problemas</h1>
+      <button mat-flat-button color="primary" (click)="abrirForm()">
+        <mat-icon>add</mat-icon> Nuevo Problema
+      </button>
+    </div>
+    <div class="mb-4">
+      <mat-form-field appearance="outline" class="min-w-[250px]">
+        <mat-label>Categoría</mat-label>
+        <mat-select [value]="categoriaId()" (selectionChange)="onCategoriaChange($event.value)">
+          <mat-option [value]="0">Todas las categorías</mat-option>
+          @for (c of categorias(); track c.id) {
+            <mat-option [value]="c.id">{{ c.nombre }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    </div>
+    <mat-card>
+      <mat-card-content>
+        @if (loading()) {
+          <div class="flex justify-center py-8"><mat-spinner></mat-spinner></div>
+        } @else {
+          <table mat-table [dataSource]="ds" class="w-full">
+            <ng-container matColumnDef="nombre">
+              <th mat-header-cell *matHeaderCellDef>Nombre</th>
+              <td mat-cell *matCellDef="let p">{{ p.nombre }}</td>
+            </ng-container>
+            <ng-container matColumnDef="categoria">
+              <th mat-header-cell *matHeaderCellDef>Categoría</th>
+              <td mat-cell *matCellDef="let p">{{ p.categoriaNombre }}</td>
+            </ng-container>
+            <ng-container matColumnDef="descripcion">
+              <th mat-header-cell *matHeaderCellDef>Descripción</th>
+              <td mat-cell *matCellDef="let p">{{ p.descripcion }}</td>
+            </ng-container>
+            <ng-container matColumnDef="estado">
+              <th mat-header-cell *matHeaderCellDef>Estado</th>
+              <td mat-cell *matCellDef="let p">
+                <span class="badge" [ngClass]="p.activo ? 'badge-resuelto' : 'badge-cerrado'">
+                  {{ p.activo ? 'Activo' : 'Inactivo' }}
+                </span>
+              </td>
+            </ng-container>
+            <ng-container matColumnDef="acciones">
+              <th mat-header-cell *matHeaderCellDef>Acciones</th>
+              <td mat-cell *matCellDef="let p">
+                <button mat-icon-button (click)="eliminar(p)"><mat-icon color="warn">delete</mat-icon></button>
+              </td>
+            </ng-container>
+            <tr mat-header-row *matHeaderRowDef="cols"></tr>
+            <tr mat-row *matRowDef="let row; columns: cols;"></tr>
+          </table>
+          @if (ds.data.length === 0 && !loading()) {
+            <div class="text-center py-4 text-gray-500">
+              {{ categoriaId() ? 'No hay problemas registrados en esta categoría.' : 'No hay problemas registrados.' }}
+            </div>
+          }
+          <div [hidden]="loading()">
+            <mat-paginator
+              [length]="totalItems"
+              [pageSize]="pageSize"
+              [pageIndex]="currentPage - 1"
+              [pageSizeOptions]="[5, 10, 25]"
+              (page)="onPageEvent($event)"
+              showFirstLastButtons
+            ></mat-paginator>
+          </div>
+        }
+      </mat-card-content>
+    </mat-card>
+  `,
+})
+export class ProblemaListComponent implements OnInit, AfterViewInit {
+  private api = inject(ProblemaApiService);
+  private catApi = inject(CategoriaApiService);
+  private auth = inject(AuthService);
+  private snack = inject(MatSnackBar);
+  private dialog = inject(MatDialog);
+  @ViewChild(MatPaginator) paginator!: MatPaginator;
+  protected loading = signal(true);
+  protected cols = ['nombre', 'categoria', 'descripcion', 'estado', 'acciones'];
+  protected categorias = signal<Categoria[]>([]);
+  protected categoriaId = signal(0);
+  protected currentPage = 1;
+  protected pageSize = 5;
+  protected totalItems = 0;
+  ds = new MatTableDataSource<Problema>([]);
+
+  ngOnInit(): void {
+    this.cargarCategorias();
+    this.cargar();
+  }
+
+  ngAfterViewInit(): void {
+    if (this.paginator) this.ds.paginator = this.paginator;
+  }
+
+  private cargarCategorias(): void {
+    const rol = this.auth.user()?.rol;
+    if (rol === 'ADMIN_OWNER') {
+      this.catApi.listarTodasGlobal().subscribe(cats => this.categorias.set(cats));
+    } else {
+      const eid = this.auth.getEmpresaId();
+      if (!eid) return;
+      this.catApi.listarTodas(eid).subscribe(cats => this.categorias.set(cats));
+    }
+  }
+
+  onCategoriaChange(catId: number): void {
+    this.categoriaId.set(catId);
+    this.currentPage = 1;
+    this.cargar();
+  }
+
+  onPageEvent(e: PageEvent): void {
+    this.currentPage = e.pageIndex + 1;
+    this.pageSize = e.pageSize;
+    this.cargar();
+  }
+
+  cargar(): void {
+    const rol = this.auth.user()?.rol;
+    const eid = this.auth.getEmpresaId();
+    if (!eid) return;
+    this.loading.set(true);
+    const cat = this.categoriaId() || undefined;
+    if (rol === 'ADMIN_OWNER') {
+      this.api.listarTodosPaginado(this.currentPage, this.pageSize, cat).subscribe({
+        next: (res) => { this.ds.data = res.data; this.totalItems = res.total; this.currentPage = res.page; this.loading.set(false); },
+        error: () => this.loading.set(false),
+      });
+    } else {
+      this.api.listarPaginado(eid, this.currentPage, this.pageSize, cat).subscribe({
+        next: (res) => { this.ds.data = res.data; this.totalItems = res.total; this.currentPage = res.page; this.loading.set(false); },
+        error: () => this.loading.set(false),
+      });
+    }
+  }
+
+  abrirForm(): void {
+    const eid = this.auth.getEmpresaId()!;
+    this.catApi.listarTodas(eid).subscribe((cats) => {
+      const ref = this.dialog.open(ProblemaFormDialog, { data: { categorias: cats }, width: '450px' });
+      ref.afterClosed().subscribe((payload?: ProblemaRequest) => {
+        if (payload) {
+          this.api.guardar(payload, eid).subscribe({
+            next: () => { this.snack.open('Problema creado', 'OK', { duration: 2000, panelClass: ['snack-success'] }); this.cargar(); },
+          });
+        }
+      });
+    });
+  }
+
+  eliminar(p: Problema): void {
+    if (!confirm(`¿Desactivar ${p.nombre}?`)) return;
+    const eid = this.auth.getEmpresaId()!;
+    this.api.eliminar(p.id, eid).subscribe({
+      next: () => { this.snack.open('Problema desactivado', 'OK', { duration: 2000, panelClass: ['snack-success'] }); this.cargar(); },
+    });
+  }
+}
+
+@Component({
+  selector: 'app-problema-form-dialog',
+  standalone: true,
+  imports: [CommonModule, MatDialogModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule],
+  template: `
+    <h2 mat-dialog-title>Nuevo Problema</h2>
+    <mat-dialog-content>
+      <form [formGroup]="form" class="flex flex-col gap-2">
+        <mat-form-field appearance="outline"><mat-label>Nombre</mat-label><input matInput formControlName="nombre" /></mat-form-field>
+        <mat-form-field appearance="outline"><mat-label>Descripción</mat-label><input matInput formControlName="descripcion" /></mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Categoría</mat-label>
+          <mat-select formControlName="categoriaId">
+            @for (c of data.categorias; track c.id) {
+              <mat-option [value]="c.id">{{ c.nombre }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+      </form>
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button mat-dialog-close>Cancelar</button>
+      <button mat-flat-button color="primary" [disabled]="form.invalid" [mat-dialog-close]="form.getRawValue()">Crear</button>
+    </mat-dialog-actions>
+  `,
+})
+export class ProblemaFormDialog {
+  private fb = inject(FormBuilder);
+  protected data = inject<{ categorias: Categoria[] }>(MAT_DIALOG_DATA);
+  protected ref = inject(MatDialogRef<ProblemaFormDialog>);
+  form = this.fb.nonNullable.group({
+    nombre: ['', [Validators.required, Validators.maxLength(100)]],
+    descripcion: [''],
+    categoriaId: [0, [Validators.required, Validators.min(1)]],
+  });
+}

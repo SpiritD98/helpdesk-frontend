@@ -1,0 +1,14 @@
+# dependencias y compilacion
+/node_modules/
+/dist/
+/.angular/
+
+# archivos de registro y logs locales (para borrar la basura)
+*.log
+ng-serve-error.log
+ng-serve.log
+serve.log
+
+# configuraciones de editores locales
+/.vscode/
+/.idea/
