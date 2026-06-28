@@ -294,8 +294,22 @@ export class CategoriaListComponent implements OnInit, OnDestroy {
             }
           </mat-form-field>
         }
-        <mat-form-field appearance="outline"><mat-label>Nombre</mat-label><input matInput formControlName="nombre" /></mat-form-field>
-        <mat-form-field appearance="outline"><mat-label>Descripción</mat-label><input matInput formControlName="descripcion" /></mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Nombre</mat-label>
+          <input matInput formControlName="nombre" (keydown)="soloTexto($event)" />
+          @if (form.controls.nombre.hasError('required') && form.controls.nombre.touched) {
+            <mat-error>Obligatorio</mat-error>
+          } @else if (form.controls.nombre.hasError('pattern')) {
+            <mat-error>Solo letras y espacios</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Descripción</mat-label>
+          <input matInput formControlName="descripcion" (keydown)="soloTexto($event)" />
+          @if (form.controls.descripcion.hasError('pattern') && form.controls.descripcion.touched) {
+            <mat-error>Solo letras y espacios</mat-error>
+          }
+        </mat-form-field>
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -315,7 +329,13 @@ export class CategoriaFormDialog {
   form = this.fb.nonNullable.group({
     // Si viene empresa preseleccionada del filtro, se usa; si no, 0 (obliga a elegir).
     empresaId: [this.data?.empresaPreseleccionada ?? 0, [Validators.required, Validators.min(1)]],
-    nombre: ['', [Validators.required, Validators.maxLength(50)]],
-    descripcion: [''],
+    nombre: ['', [Validators.required, Validators.maxLength(50), Validators.pattern('^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$')]],
+    descripcion: ['', [Validators.pattern('^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$')]],
   });
+
+  soloTexto(event: KeyboardEvent): void {
+    const permitido = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]$/.test(event.key);
+    const control = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab'].includes(event.key);
+    if (!permitido && !control) event.preventDefault();
+  }
 }

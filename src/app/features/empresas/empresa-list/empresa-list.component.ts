@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, inject, signal, OnInit, ViewChild, AfterViewInit } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, computed, OnInit, ViewChild, AfterViewInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
@@ -12,6 +12,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ReactiveFormsModule, FormBuilder, Validators, FormsModule } from '@angular/forms';
 import { EmpresaApiService } from '../../../core/services/empresa-api.service';
+import { AuthService } from '../../../core/auth/auth.service';
 import { Empresa, EmpresaRequest } from '../../../core/models/empresa.model';
 
 @Component({
@@ -26,9 +27,11 @@ import { Empresa, EmpresaRequest } from '../../../core/models/empresa.model';
   template: `
     <div class="flex justify-between items-center mb-4">
       <h1 class="text-2xl font-bold">Empresas</h1>
-      <button mat-flat-button color="primary" (click)="abrirForm()">
-        <mat-icon>add</mat-icon> Nueva Empresa
-      </button>
+      @if (rol() === 'ADMIN_OWNER') {
+        <button mat-flat-button color="primary" (click)="abrirForm()">
+          <mat-icon>add</mat-icon> Nueva Empresa
+        </button>
+      }
     </div>
     <mat-card>
       <mat-card-content>
@@ -106,10 +109,12 @@ import { Empresa, EmpresaRequest } from '../../../core/models/empresa.model';
 })
 export class EmpresaListComponent implements OnInit, AfterViewInit {
   private api = inject(EmpresaApiService);
+  private auth = inject(AuthService);
   private snack = inject(MatSnackBar);
   private dialog = inject(MatDialog);
   @ViewChild(MatPaginator) paginator!: MatPaginator;
   protected loading = signal(true);
+  protected rol = computed(() => this.auth.getRol());
   protected cols = ['nombre', 'ruc', 'correo', 'telefono', 'activo', 'acciones'];
   protected rucValue = signal('');
   protected errorMsg = signal('');
@@ -195,10 +200,42 @@ export class EmpresaListComponent implements OnInit, AfterViewInit {
     <h2 mat-dialog-title>Nueva Empresa</h2>
     <mat-dialog-content>
       <form [formGroup]="form" class="flex flex-col gap-2">
-        <mat-form-field appearance="outline"><mat-label>RUC</mat-label><input matInput formControlName="ruc" /></mat-form-field>
-        <mat-form-field appearance="outline"><mat-label>Nombre</mat-label><input matInput formControlName="nombre" /></mat-form-field>
-        <mat-form-field appearance="outline"><mat-label>Teléfono</mat-label><input matInput formControlName="telefonoContacto" /></mat-form-field>
-        <mat-form-field appearance="outline"><mat-label>Correo</mat-label><input matInput type="email" formControlName="correoContacto" /></mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>RUC</mat-label>
+          <input matInput formControlName="ruc" maxlength="10" (keydown)="soloNumeros($event)" placeholder="1234567890" />
+          @if (form.controls.ruc.hasError('required') && form.controls.ruc.touched) {
+            <mat-error>Obligatorio</mat-error>
+          } @else if (form.controls.ruc.hasError('pattern')) {
+            <mat-error>Solo números, máximo 10 dígitos</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Nombre</mat-label>
+          <input matInput formControlName="nombre" (keydown)="soloTexto($event)" />
+          @if (form.controls.nombre.hasError('required') && form.controls.nombre.touched) {
+            <mat-error>Obligatorio</mat-error>
+          } @else if (form.controls.nombre.hasError('pattern')) {
+            <mat-error>Solo letras y espacios</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Teléfono</mat-label>
+          <input matInput formControlName="telefonoContacto" maxlength="9" (keydown)="soloNumeros($event)" placeholder="999888777" />
+          @if (form.controls.telefonoContacto.hasError('required') && form.controls.telefonoContacto.touched) {
+            <mat-error>Obligatorio</mat-error>
+          } @else if (form.controls.telefonoContacto.hasError('pattern')) {
+            <mat-error>Debe tener 9 dígitos</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Correo</mat-label>
+          <input matInput type="email" formControlName="correoContacto" />
+          @if (form.controls.correoContacto.hasError('required') && form.controls.correoContacto.touched) {
+            <mat-error>Obligatorio</mat-error>
+          } @else if (form.controls.correoContacto.hasError('email')) {
+            <mat-error>Email inválido</mat-error>
+          }
+        </mat-form-field>
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -211,9 +248,21 @@ export class EmpresaFormDialog {
   private fb = inject(FormBuilder);
   protected ref = inject(MatDialogRef<EmpresaFormDialog>);
   form = this.fb.nonNullable.group({
-    ruc: ['', [Validators.required, Validators.maxLength(15)]],
-    nombre: ['', [Validators.required, Validators.maxLength(150)]],
-    telefonoContacto: ['', [Validators.required, Validators.maxLength(20)]],
+    ruc: ['', [Validators.required, Validators.pattern('^[0-9]{1,10}$')]],
+    nombre: ['', [Validators.required, Validators.maxLength(150), Validators.pattern('^[a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\\s.,&-]+$')]],
+    telefonoContacto: ['', [Validators.required, Validators.pattern('^[0-9]{9}$')]],
     correoContacto: ['', [Validators.required, Validators.email]],
   });
+
+  soloNumeros(event: KeyboardEvent): void {
+    const allowed = ['0','1','2','3','4','5','6','7','8','9','Backspace','Delete','ArrowLeft','ArrowRight','Tab'];
+    if (!allowed.includes(event.key)) event.preventDefault();
+  }
+
+  /** El nombre de empresa permite letras, números y signos comunes (, . & -). */
+  soloTexto(event: KeyboardEvent): void {
+    const permitido = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s.,&-]$/.test(event.key);
+    const control = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab'].includes(event.key);
+    if (!permitido && !control) event.preventDefault();
+  }
 }

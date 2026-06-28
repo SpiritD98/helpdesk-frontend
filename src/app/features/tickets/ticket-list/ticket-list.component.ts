@@ -75,10 +75,6 @@ import { EstadoTicket, EstadoTicketLabel, PrioridadTicketLabel } from '../../../
             <button mat-flat-button color="primary" (click)="nuevo()" class="ml-auto">
               <mat-icon>add_circle_outline</mat-icon> Reportar un problema
             </button>
-          } @else if (rol() !== 'AGENTE' && rol() !== 'ADMIN_EMPRESA') {
-            <button mat-flat-button color="primary" (click)="nuevo()" class="ml-auto">
-              <mat-icon>add</mat-icon> Nuevo Ticket
-            </button>
           }
         </div>
 

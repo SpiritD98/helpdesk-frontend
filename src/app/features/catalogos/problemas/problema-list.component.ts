@@ -285,8 +285,22 @@ export class ProblemaListComponent implements OnInit, AfterViewInit {
     <h2 mat-dialog-title>Nuevo Problema</h2>
     <mat-dialog-content>
       <form [formGroup]="form" class="flex flex-col gap-2">
-        <mat-form-field appearance="outline"><mat-label>Nombre</mat-label><input matInput formControlName="nombre" /></mat-form-field>
-        <mat-form-field appearance="outline"><mat-label>Descripción</mat-label><input matInput formControlName="descripcion" /></mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Nombre</mat-label>
+          <input matInput formControlName="nombre" (keydown)="soloTexto($event)" />
+          @if (form.controls.nombre.hasError('required') && form.controls.nombre.touched) {
+            <mat-error>Obligatorio</mat-error>
+          } @else if (form.controls.nombre.hasError('pattern')) {
+            <mat-error>Solo letras y espacios</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Descripción</mat-label>
+          <input matInput formControlName="descripcion" (keydown)="soloTexto($event)" />
+          @if (form.controls.descripcion.hasError('pattern') && form.controls.descripcion.touched) {
+            <mat-error>Solo letras y espacios</mat-error>
+          }
+        </mat-form-field>
         @if (empresas.length > 0) {
           <mat-form-field appearance="outline">
             <mat-label>Empresa</mat-label>
@@ -333,12 +347,18 @@ export class ProblemaFormDialog {
   categorias: Categoria[] = this.data?.categorias ?? [];
 
   form = this.fb.nonNullable.group({
-    nombre: ['', [Validators.required, Validators.maxLength(100)]],
-    descripcion: [''],
+    nombre: ['', [Validators.required, Validators.maxLength(100), Validators.pattern('^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$')]],
+    descripcion: ['', [Validators.pattern('^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$')]],
     // empresaId solo aplica al owner; los demás no lo envían.
     empresaId: [this.data?.empresaPreseleccionada ?? 0, [Validators.min(0)]],
     categoriaId: [0, [Validators.required, Validators.min(1)]],
   });
+
+  soloTexto(event: KeyboardEvent): void {
+    const permitido = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]$/.test(event.key);
+    const control = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab'].includes(event.key);
+    if (!permitido && !control) event.preventDefault();
+  }
 
   constructor() {
     // Si el owner tiene empresa preseleccionada, cargamos sus categorías;

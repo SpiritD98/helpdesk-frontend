@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { Categoria } from '../models/categoria.model';
+import { Empresa } from '../models/empresa.model';
 import { PrioridadTicket } from '../models/enums';
 import { Problema } from '../models/problema.model';
 
@@ -64,5 +65,10 @@ export class PublicApiService {
   /** Crea un ticket reportado sin iniciar sesión. */
   crearTicketAnonimo(payload: TicketAnonimoRequest): Observable<TicketAnonimoResponse> {
     return this.http.post<TicketAnonimoResponse>(`${this.url}/tickets`, payload);
+  }
+
+  /** Lista las empresas activas (id + nombre) para el selector del registro público. */
+  listarEmpresas(): Observable<Empresa[]> {
+    return this.http.get<Empresa[]>(`${this.url}/empresas`);
   }
 }

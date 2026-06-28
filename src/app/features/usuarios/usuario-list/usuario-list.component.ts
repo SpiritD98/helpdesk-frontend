@@ -18,9 +18,11 @@ import { FormsModule } from '@angular/forms';
 import { Observable, Subject, debounceTime, distinctUntilChanged, Subscription } from 'rxjs';
 import { UsuarioApiService } from '../../../core/services/usuario-api.service';
 import { RolApiService } from '../../../core/services/rol-api.service';
+import { EmpresaApiService } from '../../../core/services/empresa-api.service';
 import { AuthService } from '../../../core/auth/auth.service';
 import { Usuario, UsuarioRequest } from '../../../core/models/usuario.model';
 import { Rol } from '../../../core/models/rol.model';
+import { Empresa } from '../../../core/models/empresa.model';
 
 @Component({
   selector: 'app-usuario-list',
@@ -99,6 +101,7 @@ import { Rol } from '../../../core/models/rol.model';
 export class UsuarioListComponent implements OnInit, AfterViewInit, OnDestroy {
   private api = inject(UsuarioApiService);
   private rolApi = inject(RolApiService);
+  private empresaApi = inject(EmpresaApiService);
   private auth = inject(AuthService);
   private snack = inject(MatSnackBar);
   private dialog = inject(MatDialog);
@@ -168,14 +171,43 @@ export class UsuarioListComponent implements OnInit, AfterViewInit, OnDestroy {
 
   abrirForm(): void {
     this.rolApi.listarTodos().subscribe((roles) => {
-      const ref = this.dialog.open(UsuarioFormDialog, { data: { roles }, width: '450px' });
-      ref.afterClosed().subscribe((payload?: UsuarioRequest) => {
-        if (payload) {
-          this.api.guardar(payload).subscribe({
-            next: () => { this.snack.open('Usuario creado', 'OK', { duration: 2000, panelClass: ['snack-success'] }); this.cargar(); },
+      // El admin_empresa solo puede crear AGENTE o CLIENTE.
+      // El admin_owner puede crear todos los roles.
+      const rolActual = this.rol();
+      const rolesPermitidos = rolActual === 'ADMIN_OWNER'
+        ? roles
+        : roles.filter(r => r.nombre === 'AGENTE' || r.nombre === 'CLIENTE');
+
+      // El admin_owner elige la empresa en el diálogo (combo);
+      // el admin_empresa siempre crea en su empresa (fija por JWT, sin combo).
+      if (rolActual === 'ADMIN_OWNER') {
+        this.empresaApi.listarTodas().subscribe((empresas) => {
+          const ref = this.dialog.open(UsuarioFormDialog, {
+            data: { roles: rolesPermitidos, empresas },
+            width: '450px',
           });
-        }
-      });
+          this.alCrearUsuario(ref);
+        });
+      } else {
+        const ref = this.dialog.open(UsuarioFormDialog, { data: { roles: rolesPermitidos }, width: '450px' });
+        this.alCrearUsuario(ref);
+      }
+    });
+  }
+
+  private alCrearUsuario(ref: any): void {
+    ref.afterClosed().subscribe((payload?: UsuarioRequest & { empresaId?: number }) => {
+      if (payload) {
+        // El owner indica la empresa del combo; el resto usa la de su JWT.
+        const eid = this.rol() === 'ADMIN_OWNER'
+          ? (payload.empresaId ?? 0)
+          : this.auth.getEmpresaId()!;
+        if (!eid) return;
+        const { empresaId, ...datos } = payload;
+        this.api.guardar(datos, eid).subscribe({
+          next: () => { this.snack.open('Usuario creado', 'OK', { duration: 2000, panelClass: ['snack-success'] }); this.cargar(); },
+        });
+      }
     });
   }
 
@@ -196,12 +228,50 @@ export class UsuarioListComponent implements OnInit, AfterViewInit, OnDestroy {
     <mat-dialog-content>
       <form [formGroup]="form" class="flex flex-col gap-2">
         <div class="grid grid-cols-2 gap-2">
-          <mat-form-field appearance="outline"><mat-label>Nombres</mat-label><input matInput formControlName="nombres" /></mat-form-field>
-          <mat-form-field appearance="outline"><mat-label>Apellidos</mat-label><input matInput formControlName="apellidos" /></mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Nombres</mat-label>
+            <input matInput formControlName="nombres" (keydown)="soloTexto($event)" />
+            @if (form.controls.nombres.hasError('required') && form.controls.nombres.touched) {
+              <mat-error>Obligatorio</mat-error>
+            } @else if (form.controls.nombres.hasError('pattern')) {
+              <mat-error>Solo letras y espacios</mat-error>
+            }
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Apellidos</mat-label>
+            <input matInput formControlName="apellidos" (keydown)="soloTexto($event)" />
+            @if (form.controls.apellidos.hasError('required') && form.controls.apellidos.touched) {
+              <mat-error>Obligatorio</mat-error>
+            } @else if (form.controls.apellidos.hasError('pattern')) {
+              <mat-error>Solo letras y espacios</mat-error>
+            }
+          </mat-form-field>
         </div>
-        <mat-form-field appearance="outline"><mat-label>Email</mat-label><input matInput type="email" formControlName="email" /></mat-form-field>
-        <mat-form-field appearance="outline"><mat-label>Contraseña</mat-label><input matInput type="password" formControlName="password" /></mat-form-field>
-        <mat-form-field appearance="outline"><mat-label>Teléfono</mat-label><input matInput formControlName="telefono" /></mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Email</mat-label>
+          <input matInput type="email" formControlName="email" />
+          @if (form.controls.email.hasError('required') && form.controls.email.touched) {
+            <mat-error>El email es obligatorio</mat-error>
+          } @else if (form.controls.email.hasError('email')) {
+            <mat-error>Email inválido</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Contraseña</mat-label>
+          <input matInput type="password" formControlName="password" />
+          @if (form.controls.password.hasError('required') && form.controls.password.touched) {
+            <mat-error>Obligatoria</mat-error>
+          } @else if (form.controls.password.hasError('minlength')) {
+            <mat-error>Mínimo 6 caracteres</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Teléfono</mat-label>
+          <input matInput formControlName="telefono" maxlength="9" (keydown)="soloNumeros($event)" placeholder="999888777" />
+          @if (form.controls.telefono.hasError('pattern') && form.controls.telefono.touched) {
+            <mat-error>Debe tener 9 dígitos</mat-error>
+          }
+        </mat-form-field>
         <mat-form-field appearance="outline">
           <mat-label>Rol</mat-label>
           <mat-select formControlName="rolId">
@@ -209,7 +279,23 @@ export class UsuarioListComponent implements OnInit, AfterViewInit, OnDestroy {
               <mat-option [value]="r.id">{{ r.nombre }}</mat-option>
             }
           </mat-select>
+          @if (form.controls.rolId.hasError('required') && form.controls.rolId.touched) {
+            <mat-error>Selecciona un rol</mat-error>
+          }
         </mat-form-field>
+        @if (data.empresas && data.empresas.length > 0) {
+          <mat-form-field appearance="outline">
+            <mat-label>Empresa</mat-label>
+            <mat-select formControlName="empresaId">
+              @for (e of data.empresas; track e.id) {
+                <mat-option [value]="e.id">{{ e.nombre }}</mat-option>
+              }
+            </mat-select>
+            @if (form.controls.empresaId.hasError('required') && form.controls.empresaId.touched) {
+              <mat-error>Selecciona una empresa</mat-error>
+            }
+          </mat-form-field>
+        }
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -220,14 +306,28 @@ export class UsuarioListComponent implements OnInit, AfterViewInit, OnDestroy {
 })
 export class UsuarioFormDialog {
   private fb = inject(FormBuilder);
-  protected data = inject<{ roles: Rol[] }>(MAT_DIALOG_DATA);
+  protected data = inject<{ roles: Rol[]; empresas?: Empresa[] }>(MAT_DIALOG_DATA);
   protected ref = inject(MatDialogRef<UsuarioFormDialog>);
   form = this.fb.nonNullable.group({
-    nombres: ['', Validators.required],
-    apellidos: ['', Validators.required],
+    nombres: ['', [Validators.required, Validators.pattern('^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$')]],
+    apellidos: ['', [Validators.required, Validators.pattern('^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$')]],
     email: ['', [Validators.required, Validators.email]],
     password: ['', [Validators.required, Validators.minLength(6)]],
-    telefono: [''],
+    telefono: ['', [Validators.pattern('^[0-9]{9}$')]],
     rolId: [0, [Validators.required, Validators.min(1)]],
+    empresaId: [0, [Validators.required, Validators.min(1)]],
   });
+
+  /** Permite solo números y teclas de edición en el campo teléfono. */
+  soloNumeros(event: KeyboardEvent): void {
+    const allowed = ['0','1','2','3','4','5','6','7','8','9','Backspace','Delete','ArrowLeft','ArrowRight','Tab'];
+    if (!allowed.includes(event.key)) event.preventDefault();
+  }
+
+  /** Bloquea números/símbolos en nombres y apellidos (solo letras y espacios). */
+  soloTexto(event: KeyboardEvent): void {
+    const permitido = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]$/.test(event.key);
+    const control = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab'].includes(event.key);
+    if (!permitido && !control) event.preventDefault();
+  }
 }
