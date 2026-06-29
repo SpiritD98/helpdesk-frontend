@@ -55,14 +55,12 @@ import { environment } from '../../../../environments/environment';
             </mat-card-subtitle>
           </mat-card-header>
           <mat-card-content>
-            <p class="whitespace-pre-wrap">{{ ticket()!.descripcion }}</p>
-            <mat-divider class="my-3"></mat-divider>
             <div class="text-sm text-gray-600">
               <div><strong>Cliente:</strong> {{ ticket()!.cliente?.nombres }} {{ ticket()!.cliente?.apellidos }}</div>
               <div><strong>Agente:</strong> {{ ticket()!.agenteAsignado ? (ticket()!.agenteAsignado!.nombres + ' ' + ticket()!.agenteAsignado!.apellidos) : 'Sin asignar' }}</div>
               <div><strong>Categoría:</strong> {{ ticket()!.categoria?.nombre || '-' }}</div>
               <div><strong>Problema:</strong> {{ ticket()!.problema?.nombre || '-' }}</div>
-              <div><strong>Creado:</strong> {{ ticket()!.fechaCreacion | date:'short' }}</div>
+              <div><strong>Creado:</strong> {{ ticket()!.fechaCreacion | date:'dd/MM/yyyy HH:mm' }}</div>
               @if (ticket()!.justificacionCierre) {
                 <div class="mt-2 p-2 bg-blue-50 rounded"><strong>Resolución:</strong> {{ ticket()!.justificacionCierre }}</div>
               }
@@ -175,6 +173,14 @@ import { environment } from '../../../../environments/environment';
         </mat-card>
         }
 
+        <!-- Descripción del problema (en su propia card) -->
+        <mat-card class="lg:col-span-3">
+          <mat-card-header><mat-card-title>Descripción del problema</mat-card-title></mat-card-header>
+          <mat-card-content>
+            <p class="whitespace-pre-wrap text-gray-700">{{ ticket()!.descripcion }}</p>
+          </mat-card-content>
+        </mat-card>
+
         <mat-card class="lg:col-span-3">
           <mat-card-header><mat-card-title>Conversación</mat-card-title></mat-card-header>
           <mat-card-content>
@@ -263,7 +269,14 @@ export class TicketDetailComponent implements OnInit {
 
   cargarComentarios(id: number): void {
     this.comentarioApi.listarPorTicket(id).subscribe({
-      next: (cs) => this.comentarios.set(cs),
+      next: (cs) => {
+        // Filtramos cualquier comentario cuyo mensaje sea igual a la descripción
+        // del ticket: evita que la descripción se vea duplicada en la conversación.
+        // (La conversación debe quedar reservada para el agente.)
+        const desc = (this.ticket()?.descripcion ?? '').trim();
+        const limpios = (cs || []).filter((c) => (c.mensaje ?? '').trim() !== desc);
+        this.comentarios.set(limpios);
+      },
       error: () => this.comentarios.set([]),
     });
   }
