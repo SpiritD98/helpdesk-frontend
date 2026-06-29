@@ -230,7 +230,7 @@ export class TicketFormComponent implements OnInit {
     this.loading.set(true);
     const v = this.form.getRawValue();
     // Se guarda solo el ticket (sin comentario inicial): la descripción ya queda
-    // en el detalle del ticket, y la conversación queda reservada para el agente.
+    // en el detalle del ticket, y la conversacion queda reservada para el agente.
     this.ticketApi.guardar({
       titulo: v.titulo,
       descripcion: v.descripcion,
