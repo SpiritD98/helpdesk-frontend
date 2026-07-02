@@ -2,6 +2,9 @@ import { Routes } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard';
 import { roleGuard } from './core/auth/role.guard';
 
+// La constante routes define las rutas de la aplicación, incluyendo las rutas públicas 
+// (login, register, reportar-problema) y las rutas protegidas que requieren autenticación y 
+// roles específicos para acceder a ellas.
 export const routes: Routes = [
   {
     path: 'login',

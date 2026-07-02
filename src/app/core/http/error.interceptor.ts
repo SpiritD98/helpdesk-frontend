@@ -5,6 +5,11 @@ import { catchError, throwError } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
 import { ApiError } from '../models/api-error.model';
 
+// El interceptor de errores se encarga de manejar los errores HTTP que ocurren durante las solicitudes realizadas por la aplicación.
+// Cuando se produce un error, el interceptor verifica el código de estado HTTP y realiza acciones específicas según el tipo de error.
+// Por ejemplo, si se recibe un error 401 (no autorizado) y la solicitud no es para los endpoints de autenticación, se fuerza el cierre 
+// de sesión del usuario.
+// Además, se muestra un mensaje de error al usuario utilizando MatSnackBar, con diferentes estilos según el tipo de error.
 export const errorInterceptor: HttpInterceptorFn = (req, next) => {
   const snack = inject(MatSnackBar);
   const auth = inject(AuthService);

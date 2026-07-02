@@ -5,6 +5,8 @@ import { Observable, tap } from 'rxjs';
 import { AuthResponse, LoginRequest, RegisterRequest } from '../models/auth.model';
 import { AuthApiService } from '../services/auth-api.service';
 
+// El servicio AuthService se encarga de gestionar la autenticación del 
+// usuario en la aplicación, incluyendo el inicio de sesión, el registro, el cierre de sesión y la verificación de roles.
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly STORAGE_KEY = 'helpdesk_auth';
@@ -14,6 +16,10 @@ export class AuthService {
   private router = inject(Router);
   private snack = inject(MatSnackBar);
 
+  // La propiedad state es una señal que almacena la información de autenticación del usuario, 
+  // incluyendo el token, la fecha de expiración y los datos del usuario.
+  // Si esta es nula, cualquier componente de la interfaz de usuario que dependa 
+  // de la autenticación se actualizará automáticamente sin tener que recargar la página.
   private state = signal<AuthResponse | null>(this.loadFromSession());
 
   user = computed(() => this.state());
@@ -29,6 +35,7 @@ export class AuthService {
     if (this.isExpired()) this.logout();
   }
 
+  // Inicia sesión con el correo electrónico y la contraseña proporcionados,
   login(email: string, password: string): Observable<AuthResponse> {
     const req: LoginRequest = { email, password };
     return this.api.login(req).pipe(
@@ -39,6 +46,8 @@ export class AuthService {
     );
   }
 
+  // Registra un nuevo usuario con los datos proporcionados, incluyendo nombres, 
+  // apellidos, correo electrónico, contraseña y empresaId.
   register(payload: RegisterRequest): Observable<AuthResponse> {
     return this.api.register(payload).pipe(
       tap((res) => {
@@ -48,6 +57,8 @@ export class AuthService {
     );
   }
 
+  // Cierra la sesión del usuario, eliminando la información de autenticación del almacenamiento de sesión y 
+  // redirigiendo al usuario a la página de inicio de sesión.
   logout(): void {
     if (this.expiryTimerId) {
       clearTimeout(this.expiryTimerId);
@@ -59,9 +70,14 @@ export class AuthService {
     this.router.navigate(['/login']);
   }
 
+  // Fuerza el cierre de sesión del usuario cuando la sesión ha expirado, mostrando un mensaje de error y 
+  // redirigiendo al usuario a la página de inicio de sesión.
   forceLogoutExpired(): void {
     this.snack.open('Tu sesión expiró. Ingresa nuevamente.', 'OK', {
       duration: 4000,
+      // El panelClass se utiliza para aplicar estilos personalizados al mensaje de error que se muestra cuando 
+      // la sesión del usuario ha expirado. En este caso, se aplica la clase 'snack-error' para indicar visualmente 
+      // que se trata de un error de sesión.
       panelClass: ['snack-error'],
     });
     sessionStorage.removeItem(this.STORAGE_KEY);
@@ -70,6 +86,8 @@ export class AuthService {
     this.router.navigate(['/login']);
   }
 
+  // Verifica si el usuario tiene alguno de los roles permitidos, devolviendo true si el rol del usuario está 
+  // incluido en la lista de roles permitidos.
   hasRole(roles: string[]): boolean {
     const r = this.state()?.rol;
     return r ? roles.includes(r) : false;
@@ -84,6 +102,8 @@ export class AuthService {
     return r ? `${r.nombres} ${r.apellidos}`.trim() : '';
   }
 
+  // Persiste la información de autenticación en el almacenamiento de sesión (sessionStorage) y 
+  // actualiza la señal state con los datos del usuario.
   private persist(res: AuthResponse): void {
     // El backend envía expiresIn en segundos (convención JWT/OAuth).
     const normalized: AuthResponse = { ...res, expiresIn: res.expiresIn * 1000 };
@@ -92,6 +112,8 @@ export class AuthService {
     this.state.set(normalized);
   }
 
+  // Carga la información de autenticación desde el almacenamiento de sesión (sessionStorage) y la devuelve
+  // como un objeto AuthResponse.
   private loadFromSession(): AuthResponse | null {
     try {
       const s = sessionStorage.getItem(this.STORAGE_KEY);
@@ -114,6 +136,7 @@ export class AuthService {
     return Date.now() >= Number(ts) + r.expiresIn;
   }
 
+  // Programa un temporizador para forzar el cierre de sesión del usuario cuando la sesión haya expirado.
   private scheduleExpiry(ms: number): void {
     if (this.expiryTimerId) clearTimeout(this.expiryTimerId);
     this.expiryTimerId = setTimeout(() => this.forceLogoutExpired(), ms);

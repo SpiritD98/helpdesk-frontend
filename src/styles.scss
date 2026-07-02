@@ -1,9 +1,14 @@
+
+// Iniciamos usando Tailwind CSS para estilos base, componentes y utilidades, directamente en los html y body, 
+// y luego definimos variables de SASS para colores y estilos personalizados.
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 // Variables de SASS 
 $primary-color: #1B3A6B;
+// declaramos la varible success-color, error-color, info-color, warning-color, neutral-light
+// y neutral-dark para usarlas en los estilos de la aplicación.
 $success-color: #10b981;
 $error-color: #ef4444;
 $info-color: #3b82f6;
